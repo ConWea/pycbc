@@ -8,7 +8,8 @@ export OMP_NUM_THREADS=4
 export HDF5_USE_FILE_LOCKING="FALSE"
 
 gps_start_time=1272790000
-gps_end_time=1272790500
+gps_end_time=1272790512
+f_min=18
 
 
 # test if there is a template bank. If not, make one
@@ -89,6 +90,18 @@ else
 fi
 
 
+# make phase-time-amplitude histogram files, if needed
+
+if [[ ! -f statHL.hdf ]]
+then
+    echo -e "\\n\\n>> [`date`] Making phase-time-amplitude files"
+
+    bash ../search/stats.sh
+else
+    echo -e "\\n\\n>> [`date`] Pre-existing phase-time-amplitude files found"
+fi
+
+
 # delete old outputs if they exist
 rm -rf ./output
 
@@ -104,7 +117,7 @@ python -m mpi4py `which pycbc_live` \
 --bank-file template_bank.hdf \
 --sample-rate 2048 \
 --enable-bank-start-frequency \
---low-frequency-cutoff 18 \
+--low-frequency-cutoff ${f_min} \
 --max-length 256 \
 --approximant "SPAtmplt:mtotal<4" "SEOBNRv4_ROM:else" \
 --chisq-bins "0.72*get_freq('fSEOBNRv4Peak',params.mass1,params.mass2,params.spin1z,params.spin2z)**0.7" \
@@ -151,8 +164,9 @@ python -m mpi4py `which pycbc_live` \
 --max-batch-size 16777216 \
 --output-path output \
 --day-hour-output-prefix \
---ranking-statistic quadsum \
 --sngl-ranking newsnr_sgveto \
+--ranking-statistic phasetd \
+--statistic-files statHL.hdf statHV.hdf statLV.hdf \
 --sgchisq-snr-threshold 4 \
 --sgchisq-locations "mtotal>40:20-30,20-45,20-60,20-75,20-90,20-105,20-120" \
 --enable-background-estimation \
@@ -163,7 +177,20 @@ python -m mpi4py `which pycbc_live` \
 --ifar-upload-threshold 0.0001 \
 --round-start-time 4 \
 --start-time $gps_start_time \
---end-time $gps_end_time
+--end-time $gps_end_time \
+--verbose
 
 echo -e "\\n\\n>> [`date`] Checking results"
-./check_results.py
+./check_results.py \
+    --gps-start ${gps_start_time} \
+    --gps-end ${gps_end_time} \
+    --f-min ${f_min} \
+    --bank template_bank.hdf \
+    --injections injections.hdf \
+    --detectors H1 L1 V1
+
+echo -e "\\n\\n>> [`date`] Running Bayestar"
+for XMLFIL in `ls output/*xml*`
+do
+    bayestar-localize-coincs --f-low ${f_min} ${XMLFIL} ${XMLFIL}
+done

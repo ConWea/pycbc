@@ -28,9 +28,11 @@
 """This module provides utilities for calculating detector responses and timing
 between observatories.
 """
+import os
 import numpy as np
 import lal
 from pycbc.types import TimeSeries
+from pycbc.types.config import InterpolatingConfigParser
 from astropy.time import Time
 from astropy import constants, coordinates, units
 from astropy.coordinates.matrix_utilities import rotation_matrix
@@ -115,7 +117,45 @@ def add_detector_on_earth(name, longitude, latitude,
                     loc.z.value])
     _custom_ground_detectors[name] = {'location': loc,
                                       'response': resp,
+                                      'yangle': yangle,
+                                      'xangle': xangle,
+                                      'height': height,
+                                      'xaltitude': 0.0,
+                                      'yaltitude': 0.0,
                                       }
+
+def load_detector_config(config_files):
+    """ Add custom detectors from a configuration file
+
+    Parameters
+    ----------
+    config_files: str or list of strs
+        The config file(s) which specify new detectors
+    """
+    methods = {'earth_normal': (add_detector_on_earth,
+                                ['longitude', 'latitude'])}
+    conf = InterpolatingConfigParser(config_files)
+    dets = conf.get_subsections('detector')
+    for det in dets:
+        kwds = dict(conf.items('detector-{}'.format(det)))
+        try:
+            method, arg_names = methods[kwds.pop('method')]
+        except KeyError:
+            raise ValueError("Missing or unkown method, "
+                             "options are {}".format(methods.keys()))
+        for k in kwds:
+            kwds[k] = float(kwds[k])
+        try:
+            args = [kwds.pop(arg) for arg in arg_names]
+        except KeyError as e:
+            raise ValueError("missing required detector argument"
+                             " {} are required".format(arg_names))
+        method(det.upper(), *args, **kwds)
+
+
+# autoload detector config files
+if 'PYCBC_DETECTOR_CONFIG' in os.environ:
+    load_detector_config(os.environ['PYCBC_DETECTOR_CONFIG'].split(':'))
 
 
 class Detector(object):
@@ -137,13 +177,13 @@ class Detector(object):
 
         if detector_name in [pfx for pfx, name in get_available_detectors()]:
             import lalsimulation as lalsim
-            self.frDetector = lalsim.DetectorPrefixToLALDetector(self.name)
-            self.response = self.frDetector.response
-            self.location = self.frDetector.location
+            self._lal = lalsim.DetectorPrefixToLALDetector(self.name)
+            self.response = self._lal.response
+            self.location = self._lal.location
         elif detector_name in _custom_ground_detectors:
-            dinfo = _custom_ground_detectors[detector_name]
-            self.response = dinfo['response']
-            self.location = dinfo['location']
+            self.info = _custom_ground_detectors[detector_name]
+            self.response = self.info['response']
+            self.location = self.info['location']
         else:
             raise ValueError("Unkown detector {}".format(detector_name))
 
@@ -165,6 +205,32 @@ class Detector(object):
         else:
             raise RuntimeError("Can't get accurate sidereal time without GPS "
                                "reference time!")
+
+    def lal(self):
+        """ Return lal data type detector instance """
+        if hasattr(self, '_lal'):
+            return self._lal
+        else:
+            import lal
+            d = lal.FrDetector()
+            d.vertexLongitudeRadians = self.longitude
+            d.vertexLatitudeRadians = self.latitude
+            d.vertexElevation = self.info['height']
+            d.xArmAzimuthRadians = self.info['xangle']
+            d.yArmAzimuthRadians = self.info['yangle']
+            d.xArmAltitudeRadians = self.info['yaltitude']
+            d.xArmAltitudeRadians = self.info['xaltitude']
+
+            # This is somewhat abused by lalsimulation at the moment
+            # to determine a filter kernel size. We set this only so that
+            # value gets a similar number of samples as other detectors
+            # it is used for nothing else
+            d.yArmMidpoint = 4000.0
+
+            x = lal.Detector()
+            r = lal.CreateDetector(x, d, lal.LALDETECTORTYPE_IFODIFF)
+            self._lal = r
+            return r
 
     def gmst_estimate(self, gps_time):
         if self.reference_time is None:
@@ -373,7 +439,7 @@ class Detector(object):
             import lalsimulation
             h_lal = lalsimulation.SimDetectorStrainREAL8TimeSeries(
                     hp.astype(np.float64).lal(), hc.astype(np.float64).lal(),
-                    ra, dec, polarization, self.frDetector)
+                    ra, dec, polarization, self.lal())
             ts = TimeSeries(
                     h_lal.data.data, delta_t=h_lal.deltaT, epoch=h_lal.epoch,
                     dtype=np.float64, copy=False)
@@ -513,9 +579,6 @@ def overhead_antenna_pattern(right_ascension, declination, polarization):
                 cos(theta) * sin(2.0*right_ascension) * cos (2.0 * polarization)
 
     return f_plus, f_cross
-
-def effective_distance(distance, inclination, f_plus, f_cross):
-    return distance / np.sqrt( ( 1 + np.cos( inclination )**2 )**2 / 4 * f_plus**2 + np.cos( inclination )**2 * f_cross**2 )
 
 
 """     LISA class      """
