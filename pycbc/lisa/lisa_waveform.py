@@ -1,5 +1,7 @@
 from pycbc.waveform import get_td_waveform
-
+from ldc.lisa.orbits import Orbits
+from ldc.lisa.projection import ProjectedStrain
+from ldc.waveform.waveform import HpHc    
 
 class lisa_waveform(HpHc):
 
