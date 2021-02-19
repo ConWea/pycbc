@@ -1,6 +1,3 @@
-from pycbc.waveform import get_td_waveform
-from ldc.lisa.orbits import Orbits
-from ldc.lisa.projection import ProjectedStrain
 from ldc.waveform.waveform import HpHc    
 
 class lisa_waveform(HpHc):
@@ -24,6 +21,8 @@ class lisa_waveform(HpHc):
     
     def compute_hphc_td(self, t):
                 
+        from pycbc.waveform import get_td_waveform
+        
         hp, hc = get_td_waveform(**self.source_parameters)
         tm = hp.sample_times.numpy() + self.source_parameters['tc']
         hp, hc = self.source2SSB(hp, hc)
@@ -31,6 +30,23 @@ class lisa_waveform(HpHc):
         
         return (self.hp, self.hc)
         
+        
+class Projector:
+
+    def __init__(self, config):
+
+        from ldc.lisa.orbits import Orbits
+        from ldc.lisa.projection import ProjectedStrain
+        
+        self.config = config
+        self.lisa_orbits = Orbits.type(self.config)
+        self.projector = ProjectedStrain(self.lisa_orbits)
+
+
+
+
+
+
         
 
 
