@@ -1,6 +1,6 @@
 from ldc.waveform.waveform import HpHc    
 
-class lisa_waveform(HpHc):
+class LisaGW(HpHc):
 
     def check_param(self):
         pass
@@ -31,7 +31,7 @@ class lisa_waveform(HpHc):
         return (self.hp, self.hc)
         
         
-class Projector:
+class LisaProjectedGW:
 
     def __init__(self, config):
 
