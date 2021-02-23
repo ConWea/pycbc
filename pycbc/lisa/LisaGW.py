@@ -1,7 +1,16 @@
 from ldc.waveform.waveform import HpHc    
 
 class LisaGW(HpHc):
-
+    
+    
+    def __init__(self, p):
+        self.source_name = 'test'
+        self.source_type = '?'
+        self.approximant = 'whatever'
+        self.reference_frame = "SSB" # default
+        self.p = p
+        self.set_param(self.p)
+        
     def check_param(self):
         pass
     
@@ -41,8 +50,6 @@ class LisaProjectedGW:
         self.config = config
         self.lisa_orbits = Orbits.type(self.config)
         self.projector = ProjectedStrain(self.lisa_orbits)
-
-
 
 
 
